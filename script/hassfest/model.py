@@ -48,6 +48,10 @@ class Integration:
 
             integration = cls(fil)
             integration.load_manifest()
+
+            if integration.domain in integrations:
+                integration.add_error('name', f"Duplicate name '${integration.domain}'")
+
             integrations[integration.domain] = integration
 
         return integrations

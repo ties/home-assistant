@@ -37,7 +37,17 @@ class NodeListClass(list):
 class NodeStrClass(str):
     """Wrapper class to be able to add attributes on a string."""
 
-    pass
+    __slots__ = ('raw_value',)
+
+    def __init__(self, seq: str, *args, **kwargs):
+        """Build instance."""
+        super().__init__()
+        import ipdb
+        ipdb.set_trace()
+    #     self.raw_value = seq
+    #     expanded = os.path.expandvars(seq)
+
+    #     super().__init__(seq, *args, **kwargs)
 
 
 # pylint: disable=too-many-ancestors
@@ -317,6 +327,20 @@ def secret_yaml(loader: SafeLineLoader,
 
     raise HomeAssistantError("Secret {} not defined".format(node.value))
 
+
+def env_str_constructor(loader: SafeLineLoader, node: yaml.nodes.Node) \
+        -> NodeStrClass:
+    """
+    Create string object from node.
+
+    Ansible has this in the SafeLoader class.
+    """
+    value = loader.construct_yaml_str(node)
+    return NodeStrClass(value)
+
+
+# https://github.com/ansible/ansible/blob/1dc8436ed91ef25748dd270c289c05f893cca6e3/lib/ansible/parsing/yaml/constructor.py#L9
+yaml.SafeLoader.add_constructor('tag:yaml.org,2002:str', env_str_constructor)
 
 yaml.SafeLoader.add_constructor('!include', _include_yaml)
 yaml.SafeLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,

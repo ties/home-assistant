@@ -1,12 +1,10 @@
 """Home Assistant auth provider."""
 import asyncio
-import base64
 from collections import OrderedDict
 import logging
 
-from typing import Any, Dict, List, Optional, Set, cast
+from typing import Any, Dict, Generator, List, Optional, Set, cast
 
-import bcrypt
 import voluptuous as vol
 
 from homeassistant.const import CONF_ID
@@ -16,10 +14,17 @@ from homeassistant.exceptions import HomeAssistantError
 from . import AuthProvider, AUTH_PROVIDER_SCHEMA, AUTH_PROVIDERS, LoginFlow
 
 from ..models import Credentials, UserMeta
+from ..util import hash_password, verify_password
 
 
 STORAGE_VERSION = 1
 STORAGE_KEY = "auth_provider.homeassistant"
+
+
+"""Type of the user elements.
+
+Semantically clearer than repeated dicts of same type."""
+UserType = Dict[str, str]
 
 
 def _disallow_id(conf: Dict[str, Any]) -> Dict[str, Any]:
@@ -67,6 +72,30 @@ class Data:
 
         return username.strip().casefold()
 
+    def _find_user_by_name(self, username: str) -> Generator[UserType, None, None]:
+        """Find all users that match the given name.
+
+        Whiel this function iterates over all users, it will not be constant
+        time: It depends on the number of loop bodies executed.
+
+        Legacy mode is handled by normalize_username.
+
+        Args:
+            username (str): The username to look up.
+
+        Yields:
+            dict: The matching user object(s)
+
+        Returns: None
+
+        """
+        # Normalize because we are comparing normalized usernames.
+        username = self.normalize_username(username)
+
+        for user in self.users:
+            if self.normalize_username(user["username"]) == username:
+                yield user
+
     async def async_load(self) -> None:
         """Load stored data."""
         data = await self._store.async_load()
@@ -112,7 +141,7 @@ class Data:
         self._data = data
 
     @property
-    def users(self) -> List[Dict[str, str]]:
+    def users(self) -> List[UserType]:
         """Return users."""
         return self._data["users"]  # type: ignore
 
@@ -121,50 +150,27 @@ class Data:
 
         Raises InvalidAuth if auth invalid.
         """
-        username = self.normalize_username(username)
-        dummy = b"$2b$12$CiuFGszHx9eNHxPuQcwBWez4CwDTOcLTX5CbOpV6gef2nYuXkY7BO"
-        found = None
+        pw_hash = None
 
         # Compare all users to avoid timing attacks.
-        for user in self.users:
-            if self.normalize_username(user["username"]) == username:
-                found = user
+        for user in self._find_user_by_name(username):
+            pw_hash = user["password"]
 
-        if found is None:
-            # check a hash to make timing the same as if user was found
-            bcrypt.checkpw(b"foo", dummy)
+        # handles empty hash and is constant time independent of existence of
+        # hash.
+        if not verify_password(password, pw_hash):
             raise InvalidAuth
-
-        user_hash = base64.b64decode(found["password"])
-
-        # bcrypt.checkpw is timing-safe
-        if not bcrypt.checkpw(password.encode(), user_hash):
-            raise InvalidAuth
-
-    # pylint: disable=no-self-use
-    def hash_password(self, password: str, for_storage: bool = False) -> bytes:
-        """Encode a password."""
-        hashed: bytes = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
-
-        if for_storage:
-            hashed = base64.b64encode(hashed)
-        return hashed
 
     def add_auth(self, username: str, password: str) -> None:
         """Add a new authenticated user/pass."""
+        # Explicitly normalize since we will use this exact string when adding.
         username = self.normalize_username(username)
 
-        if any(
-            self.normalize_username(user["username"]) == username for user in self.users
-        ):
+        # Check whether user with given name already exists.
+        if any(self._find_user_by_name(username)):
             raise InvalidUser
 
-        self.users.append(
-            {
-                "username": username,
-                "password": self.hash_password(password, True).decode(),
-            }
-        )
+        self.users.append({"username": username, "password": hash_password(password)})
 
     @callback
     def async_remove_auth(self, username: str) -> None:
@@ -187,12 +193,9 @@ class Data:
 
         Raises InvalidUser if user cannot be found.
         """
-        username = self.normalize_username(username)
-
-        for user in self.users:
-            if self.normalize_username(user["username"]) == username:
-                user["password"] = self.hash_password(new_password, True).decode()
-                break
+        for user in self._find_user_by_name(username):
+            user["password"] = hash_password(new_password)
+            break
         else:
             raise InvalidUser
 

@@ -68,6 +68,17 @@ class UnknownUser(Unauthorized):
     """When call is made with user ID that doesn't exist."""
 
 
+class InvalidAuth(HomeAssistantError):
+    """Raised when we encounter invalid authentication."""
+
+
+class InvalidUser(HomeAssistantError):
+    """Raised when invalid user is specified.
+
+    Will not be raised when validating authentication.
+    """
+
+
 class ServiceNotFound(HomeAssistantError):
     """Raised when a service is not found."""
 

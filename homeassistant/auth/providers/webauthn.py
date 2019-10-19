@@ -193,11 +193,11 @@ class Data:
         await self._store.async_save(self._data)
 
 
-@AUTH_PROVIDERS.register("homeassistant")
-class HassAuthProvider(AuthProvider):
+@AUTH_PROVIDERS.register("webauthn")
+class WebAuthnAuthProvider(AuthProvider):
     """Auth provider based on a local storage of users in HASS config dir."""
 
-    DEFAULT_TITLE = "Home Assistant Local"
+    DEFAULT_TITLE = "Home Assistant WebAuthn"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize an Home Assistant auth provider."""
@@ -217,7 +217,7 @@ class HassAuthProvider(AuthProvider):
 
     async def async_login_flow(self, context: Optional[Dict]) -> LoginFlow:
         """Return a flow to login."""
-        return HassLoginFlow(self)
+        return WebAuthnFlow(self)
 
     async def async_validate_login(self, username: str, password: str) -> None:
         """Validate a username and password."""
@@ -267,7 +267,7 @@ class HassAuthProvider(AuthProvider):
             pass
 
 
-class HassLoginFlow(LoginFlow):
+class WebAuthnFlow(LoginFlow):
     """Handler for the login flow."""
 
     async def async_step_init(
@@ -278,9 +278,9 @@ class HassLoginFlow(LoginFlow):
 
         if user_input is not None:
             try:
-                await cast(HassAuthProvider, self._auth_provider).async_validate_login(
-                    user_input["username"], user_input["password"]
-                )
+                await cast(
+                    WebAuthnAuthProvider, self._auth_provider
+                ).async_validate_login(user_input["username"], user_input["password"])
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
 
@@ -290,7 +290,6 @@ class HassLoginFlow(LoginFlow):
 
         schema: Dict[str, type] = OrderedDict()
         schema["username"] = str
-        schema["password"] = str
 
         return self.async_show_form(
             step_id="init", data_schema=vol.Schema(schema), errors=errors

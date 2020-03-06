@@ -35,10 +35,8 @@ from .const import SCHEDULE_NOK, SCHEDULE_OK
 __all__ = ["BrData"]
 _LOGGER = logging.getLogger(__name__)
 
-"""
-Log at WARN level after WARN_THRESHOLD failures, otherwise log at
-DEBUG level.
-"""
+# Number of failures after which the message is logged at the warning level
+# instead of debug level.
 WARN_THRESHOLD = 4
 
 
